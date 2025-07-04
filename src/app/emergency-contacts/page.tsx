@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { motion } from 'framer-motion'
 import { Plus, Edit, Trash2, Phone, Mail, User, Shield, AlertTriangle } from 'lucide-react'
 import { useSession } from 'next-auth/react'
@@ -18,7 +18,7 @@ interface EmergencyContact {
   isActive: boolean
 }
 
-export default function EmergencyContacts() {
+function EmergencyContactsContent() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -371,5 +371,20 @@ export default function EmergencyContacts() {
         </div>
       </main>
     </div>
+  )
+}
+
+export default function EmergencyContacts() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+        <Header />
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        </div>
+      </div>
+    }>
+      <EmergencyContactsContent />
+    </Suspense>
   )
 }
