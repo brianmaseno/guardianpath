@@ -79,13 +79,13 @@ export async function POST(request: NextRequest) {
         ])
 
         safetyData = {
-          currentAddress: address?.address?.freeformAddress || 'Address unavailable',
-          nearbyHospitals: hospitals.slice(0, 3).map((place: any) => ({
+          currentAddress: (address as { address?: { freeformAddress?: string } })?.address?.freeformAddress || 'Address unavailable',
+          nearbyHospitals: (hospitals as Array<{ poi?: { name?: string }; dist?: number; address?: { freeformAddress?: string } }>).slice(0, 3).map((place) => ({
             name: place.poi?.name || 'Hospital',
             distance: place.dist || 0,
             address: place.address?.freeformAddress || 'Address unavailable'
           })),
-          nearbyPoliceStations: policeStations.slice(0, 3).map((place: any) => ({
+          nearbyPoliceStations: (policeStations as Array<{ poi?: { name?: string }; dist?: number; address?: { freeformAddress?: string } }>).slice(0, 3).map((place) => ({
             name: place.poi?.name || 'Police Station',
             distance: place.dist || 0,
             address: place.address?.freeformAddress || 'Address unavailable'
@@ -104,8 +104,8 @@ export async function POST(request: NextRequest) {
       panicId,
       location,
       timestamp,
-      imageAnalysis,
-      safetyData
+      imageAnalysis: imageAnalysis || undefined,
+      safetyData: safetyData || undefined
     })
 
     // 5. Return comprehensive response
@@ -162,7 +162,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function notifyEmergencyContacts(data: any) {
+async function notifyEmergencyContacts(data: Record<string, unknown>) {
   try {
     // In a real application, these would be fetched from user's profile
     const emergencyContacts = [
@@ -180,19 +180,19 @@ async function notifyEmergencyContacts(data: any) {
       }
     ]
 
-    const locationText = data.location 
-      ? `Location: ${data.location.lat.toFixed(6)}, ${data.location.lng.toFixed(6)}`
+    const locationText = (data.location as { lat?: number; lng?: number } | undefined)?.lat
+      ? `Location: ${(data.location as { lat: number; lng: number }).lat.toFixed(6)}, ${(data.location as { lat: number; lng: number }).lng.toFixed(6)}`
       : 'Location: Unavailable'
 
     const alertMessage = `🚨 EMERGENCY ALERT from GuardianPath
 
 ${data.panicId}
-Time: ${new Date(data.timestamp).toLocaleString()}
+Time: ${data.timestamp ? new Date(data.timestamp as string).toLocaleString() : 'Unknown'}
 ${locationText}
 
-${data.safetyData?.currentAddress ? `Address: ${data.safetyData.currentAddress}` : ''}
+${(data.safetyData as { currentAddress?: string } | undefined)?.currentAddress ? `Address: ${(data.safetyData as { currentAddress: string }).currentAddress}` : ''}
 
-${data.imageAnalysis?.description ? `Scene: ${data.imageAnalysis.description}` : ''}
+${(data.imageAnalysis as { description?: string } | undefined)?.description ? `Scene: ${(data.imageAnalysis as { description: string }).description}` : ''}
 
 This is an automated emergency alert. Please check on the person immediately.`
 

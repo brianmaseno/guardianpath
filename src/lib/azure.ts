@@ -22,7 +22,7 @@ export class AzureMapsService {
   /**
    * Get route between two points
    */
-  async getRoute(start: { lat: number; lng: number }, end: { lat: number; lng: number }): Promise<any> {
+  async getRoute(start: { lat: number; lng: number }, end: { lat: number; lng: number }): Promise<unknown> {
     try {
       if (!this.subscriptionKey) {
         throw new Error('Azure Maps subscription key not configured')
@@ -47,7 +47,7 @@ export class AzureMapsService {
   /**
    * Search for nearby safe places (police stations, hospitals, etc.)
    */
-  async findNearbyPlaces(location: { lat: number; lng: number }, category: string = 'hospital'): Promise<any[]> {
+  async findNearbyPlaces(location: { lat: number; lng: number }, category: string = 'hospital'): Promise<unknown[]> {
     try {
       if (!this.subscriptionKey) {
         throw new Error('Azure Maps subscription key not configured')
@@ -72,7 +72,7 @@ export class AzureMapsService {
   /**
    * Reverse geocoding - get address from coordinates
    */
-  async getAddressFromCoordinates(location: { lat: number; lng: number }): Promise<any> {
+  async getAddressFromCoordinates(location: { lat: number; lng: number }): Promise<unknown> {
     try {
       if (!this.subscriptionKey) {
         throw new Error('Azure Maps subscription key not configured')
@@ -108,7 +108,15 @@ export class AzureVisionService {
   /**
    * Analyze image using Azure Computer Vision
    */
-  async analyzeImage(imageData: string): Promise<any> {
+  async analyzeImage(imageData: string): Promise<{
+    description: string
+    confidence: number
+    objects: Array<{ name: string; confidence: number; rectangle?: unknown }>
+    tags: Array<{ name: string; confidence: number }>
+    isAdultContent: boolean
+    isRacyContent: boolean
+    landmarks: Array<{ name: string; confidence: number }>
+  }> {
     try {
       if (!this.endpoint || !this.key) {
         throw new Error('Azure Vision endpoint or key not configured')
@@ -134,24 +142,30 @@ export class AzureVisionService {
         throw new Error(`Azure Vision API error: ${response.statusText}`)
       }
 
-      const analysisResult = await response.json()
+      const analysisResult = await response.json() as {
+        description?: { captions?: Array<{ text: string; confidence: number }> }
+        objects?: Array<{ object: string; confidence: number; rectangle: unknown }>
+        tags?: Array<{ name: string; confidence: number }>
+        adult?: { isAdultContent: boolean; isRacyContent: boolean }
+        categories?: Array<{ detail?: { landmarks: Array<{ name: string; confidence: number }> } }>
+      }
       
       return {
         description: analysisResult.description?.captions?.[0]?.text || 'No description available',
         confidence: analysisResult.description?.captions?.[0]?.confidence || 0,
-        objects: analysisResult.objects?.map((obj: any) => ({
+        objects: analysisResult.objects?.map((obj) => ({
           name: obj.object,
           confidence: obj.confidence,
           rectangle: obj.rectangle
         })) || [],
-        tags: analysisResult.tags?.map((tag: any) => ({
+        tags: analysisResult.tags?.map((tag) => ({
           name: tag.name,
           confidence: tag.confidence
         })) || [],
         isAdultContent: analysisResult.adult?.isAdultContent || false,
         isRacyContent: analysisResult.adult?.isRacyContent || false,
-        landmarks: analysisResult.categories?.filter((cat: any) => cat.detail?.landmarks)
-          .flatMap((cat: any) => cat.detail.landmarks) || []
+        landmarks: analysisResult.categories?.filter((cat) => cat.detail?.landmarks)
+          .flatMap((cat) => cat.detail?.landmarks || []) || []
       }
     } catch (error) {
       console.error('Error analyzing image with Azure Vision:', error)
@@ -162,7 +176,12 @@ export class AzureVisionService {
   /**
    * Extract text from image (OCR)
    */
-  async extractText(imageData: string): Promise<any> {
+  async extractText(imageData: string): Promise<{
+    text: string
+    language: string
+    orientation: string
+    textAngle: number
+  }> {
     try {
       if (!this.endpoint || !this.key) {
         throw new Error('Azure Vision endpoint or key not configured')
@@ -187,12 +206,21 @@ export class AzureVisionService {
         throw new Error(`Azure OCR API error: ${response.statusText}`)
       }
 
-      const ocrResult = await response.json()
+      const ocrResult = await response.json() as {
+        regions?: Array<{
+          lines?: Array<{
+            words?: Array<{ text: string }>
+          }>
+        }>
+        language: string
+        orientation: string
+        textAngle: number
+      }
       
       // Extract all text from regions
-      const extractedText = ocrResult.regions?.flatMap((region: any) =>
-        region.lines?.flatMap((line: any) =>
-          line.words?.map((word: any) => word.text)
+      const extractedText = ocrResult.regions?.flatMap((region) =>
+        region.lines?.flatMap((line) =>
+          line.words?.map((word) => word.text)
         )
       ).join(' ') || ''
 

@@ -25,7 +25,12 @@ export interface ImageAnalysis {
   objects: Array<{
     name: string
     confidence: number
-    rectangle?: any
+    rectangle?: {
+      x: number
+      y: number
+      w: number
+      h: number
+    }
   }>
   tags: Array<{
     name: string
@@ -33,7 +38,10 @@ export interface ImageAnalysis {
   }>
   isAdultContent: boolean
   isRacyContent: boolean
-  landmarks: any[]
+  landmarks: Array<{
+    name: string
+    confidence: number
+  }>
 }
 
 export interface SafetyData {
@@ -89,7 +97,7 @@ export interface User {
   updatedAt?: Date
 }
 
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   success: boolean
   data?: T
   error?: string

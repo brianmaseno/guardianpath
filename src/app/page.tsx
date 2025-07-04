@@ -29,7 +29,7 @@ export default function Home() {
           })
           toast.success('Location access granted for enhanced safety')
         },
-        (error) => {
+        () => {
           toast.error('Location access denied. Some safety features may be limited.')
         }
       )
