@@ -2,7 +2,8 @@
 
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { AlertTriangle, Camera, MapPin, Clock } from 'lucide-react'
+import { AlertTriangle, Camera, MapPin, Clock, Users } from 'lucide-react'
+import { useSession } from 'next-auth/react'
 import toast from 'react-hot-toast'
 import { Location } from '@/types'
 
@@ -15,10 +16,43 @@ interface PanicButtonProps {
 }
 
 export function PanicButton({ onPanicActivated }: PanicButtonProps) {
+  const { data: session } = useSession()
   const [isActivating, setIsActivating] = useState(false)
   const [isActive, setIsActive] = useState(false)
+  const [emergencyContacts, setEmergencyContacts] = useState<any[]>([])
+
+  const checkEmergencyContacts = async () => {
+    if (!session) {
+      toast.error('Please sign in to use emergency features')
+      return false
+    }
+
+    try {
+      const response = await fetch('/api/emergency-contacts')
+      if (response.ok) {
+        const data = await response.json()
+        const contacts = data.emergencyContacts || []
+        setEmergencyContacts(contacts)
+        
+        if (contacts.length === 0) {
+          toast.error('No emergency contacts found. Please add contacts first.')
+          return false
+        }
+        return true
+      }
+    } catch (error) {
+      console.error('Failed to fetch emergency contacts:', error)
+      toast.error('Failed to verify emergency contacts')
+      return false
+    }
+    return false
+  }
 
   const handlePanicMode = async () => {
+    // Check if user is signed in and has emergency contacts
+    const hasContacts = await checkEmergencyContacts()
+    if (!hasContacts) return
+
     setIsActivating(true)
     
     try {
@@ -26,8 +60,10 @@ export function PanicButton({ onPanicActivated }: PanicButtonProps) {
       let location: Location | undefined
       try {
         location = await getCurrentLocation()
+        toast.success('Location captured')
       } catch (error) {
         console.warn('Failed to get location:', error)
+        toast.error('Failed to get location, continuing without it')
         // Continue without location
       }
       
@@ -35,8 +71,10 @@ export function PanicButton({ onPanicActivated }: PanicButtonProps) {
       let photo: string | undefined
       try {
         photo = await capturePhoto()
+        toast.success('Photo captured and analyzing...')
       } catch (error) {
         console.warn('Failed to capture photo:', error)
+        toast.error('Failed to capture photo, continuing without it')
         // Continue without photo
       }
       

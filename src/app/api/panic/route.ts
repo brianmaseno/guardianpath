@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 import clientPromise from '@/lib/mongodb'
 import { azureMaps, azureVision } from '@/lib/azure'
+import { emailService } from '@/lib/email'
 import { Location } from '@/types'
 
 interface PanicRequestBody {
@@ -11,14 +14,44 @@ interface PanicRequestBody {
 
 export async function POST(request: NextRequest) {
   try {
+    // Check authentication
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.email) {
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      )
+    }
+
     const body: PanicRequestBody = await request.json()
     const { location, timestamp, photo } = body
 
-    console.log('Panic mode activated:', { 
+    console.log('Panic mode activated by:', session.user.email, { 
       location: location ? `${location.lat}, ${location.lng}` : 'No location',
       timestamp,
       hasPhoto: !!photo
     })
+
+    // Get user's emergency contacts
+    const client = await clientPromise
+    const db = client.db('guardianpath')
+    const usersCollection = db.collection('users')
+    
+    const user = await usersCollection.findOne({ email: session.user.email })
+    if (!user) {
+      return NextResponse.json(
+        { error: 'User not found' },
+        { status: 404 }
+      )
+    }
+
+    const emergencyContacts = user.emergencyContacts || []
+    if (emergencyContacts.length === 0) {
+      return NextResponse.json(
+        { error: 'No emergency contacts found. Please add emergency contacts first.' },
+        { status: 400 }
+      )
+    }
 
     // Generate unique panic ID
     const panicId = `panic_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
@@ -26,20 +59,23 @@ export async function POST(request: NextRequest) {
     // 1. Store panic event in MongoDB
     let mongoResult = null
     try {
-      const client = await clientPromise
-      const db = client.db('guardianpath')
-      const collection = db.collection('panic_events')
+      const panicEventsCollection = db.collection('panic_events')
       
       const panicEvent = {
+        userId: user._id,
+        userEmail: session.user.email,
         panicId,
         location,
         timestamp: new Date(timestamp),
         photo: photo ? 'stored' : null,
         status: 'active',
+        safetyData: null, // Will be updated after safety data is retrieved
+        imageAnalysis: null, // Will be updated after image analysis
+        notificationResult: null, // Will be updated after notifications are sent
         createdAt: new Date()
       }
       
-      mongoResult = await collection.insertOne(panicEvent)
+      mongoResult = await panicEventsCollection.insertOne(panicEvent)
       console.log('Stored panic event in MongoDB:', mongoResult.insertedId)
     } catch (error) {
       console.error('MongoDB storage error:', error)
@@ -93,6 +129,16 @@ export async function POST(request: NextRequest) {
         }
 
         console.log('Safety data retrieved:', safetyData)
+        
+        // Store safety data in database
+        if (mongoResult) {
+          const client = await clientPromise
+          const db = client.db('guardianpath')
+          await db.collection('panic_events').updateOne(
+            { _id: mongoResult.insertedId },
+            { $set: { safetyData } }
+          )
+        }
       } catch (error) {
         console.error('Azure Maps API error:', error)
         safetyData = { error: 'Failed to get safety information' }
@@ -106,6 +152,9 @@ export async function POST(request: NextRequest) {
       timestamp,
       imageAnalysis: imageAnalysis || undefined,
       safetyData: safetyData || undefined
+    }, emergencyContacts, {
+      email: session.user.email,
+      name: session.user.name || 'Unknown User'
     })
 
     // 5. Return comprehensive response
@@ -136,11 +185,14 @@ export async function POST(request: NextRequest) {
           { _id: mongoResult.insertedId },
           { 
             $set: { 
+              notificationResult,
               response,
+              status: 'processed', // Update status to show it's been fully processed
               updatedAt: new Date()
             }
           }
         )
+        console.log('✅ Panic event fully stored in database with all data')
       } catch (error) {
         console.error('MongoDB update error:', error)
       }
@@ -162,59 +214,68 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function notifyEmergencyContacts(data: Record<string, unknown>) {
+async function notifyEmergencyContacts(data: Record<string, unknown>, contacts: any[], userInfo: { email: string; name: string }) {
   try {
-    // In a real application, these would be fetched from user's profile
-    const emergencyContacts = [
-      { 
-        name: 'Emergency Contact 1', 
-        phone: '+1234567890',
-        email: 'contact1@example.com',
-        relationship: 'Family'
-      },
-      { 
-        name: 'Emergency Contact 2', 
-        phone: '+0987654321',
-        email: 'contact2@example.com',
-        relationship: 'Friend'
+    // Use the user's actual emergency contacts
+    const emergencyContacts = contacts.filter(contact => contact.isActive !== false)
+
+    // Prepare email data
+    const emergencyEmailData = {
+      panicId: data.panicId as string,
+      userEmail: userInfo.email,
+      userName: userInfo.name,
+      timestamp: data.timestamp as string,
+      location: data.location as { lat: number; lng: number } | undefined,
+      currentAddress: (data.safetyData as { currentAddress?: string } | undefined)?.currentAddress,
+      nearbyHospitals: (data.safetyData as { nearbyHospitals?: any[] } | undefined)?.nearbyHospitals,
+      nearbyPoliceStations: (data.safetyData as { nearbyPoliceStations?: any[] } | undefined)?.nearbyPoliceStations,
+      imageAnalysis: data.imageAnalysis as { description: string; confidence: number } | undefined,
+      googleMapsUrl: data.location ? `https://maps.google.com/maps?q=${(data.location as { lat: number; lng: number }).lat},${(data.location as { lat: number; lng: number }).lng}` : undefined
+    }
+
+    // Get email addresses from contacts
+    const contactEmails = emergencyContacts
+      .filter(contact => contact.email && contact.email.trim() !== '')
+      .map(contact => contact.email)
+
+    if (contactEmails.length === 0) {
+      console.warn('No valid email addresses found in emergency contacts')
+      return {
+        success: false,
+        error: 'No valid email addresses found',
+        message: 'Emergency contacts do not have valid email addresses'
       }
-    ]
+    }
 
-    const locationText = (data.location as { lat?: number; lng?: number } | undefined)?.lat
-      ? `Location: ${(data.location as { lat: number; lng: number }).lat.toFixed(6)}, ${(data.location as { lat: number; lng: number }).lng.toFixed(6)}`
-      : 'Location: Unavailable'
+    console.log(`📧 Sending emergency emails to: ${contactEmails.join(', ')}`)
 
-    const alertMessage = `🚨 EMERGENCY ALERT from GuardianPath
+    // Send the actual emergency emails
+    const emailResult = await emailService.sendEmergencyAlert(emergencyEmailData, contactEmails)
 
-${data.panicId}
-Time: ${data.timestamp ? new Date(data.timestamp as string).toLocaleString() : 'Unknown'}
-${locationText}
-
-${(data.safetyData as { currentAddress?: string } | undefined)?.currentAddress ? `Address: ${(data.safetyData as { currentAddress: string }).currentAddress}` : ''}
-
-${(data.imageAnalysis as { description?: string } | undefined)?.description ? `Scene: ${(data.imageAnalysis as { description: string }).description}` : ''}
-
-This is an automated emergency alert. Please check on the person immediately.`
-
-    // Simulate sending notifications
+    // Also send SMS if phone numbers are available (keeping existing logic)
     const notifications = emergencyContacts.map(contact => {
-      // Here you would integrate with:
-      // - Twilio for SMS
-      // - SendGrid for email
-      // - Firebase for push notifications
-      // - WhatsApp Business API
+      const methods = []
       
-      console.log(`Sending emergency alert to ${contact.name} (${contact.phone})`)
-      console.log(alertMessage)
+      if (contact.email && contactEmails.includes(contact.email)) {
+        methods.push('email')
+        console.log(`📧 Emergency email queued for ${contact.name} (${contact.email})`)
+      }
+      
+      if (contact.phone) {
+        methods.push('sms')
+        console.log(`📱 Emergency SMS simulation for ${contact.name} (${contact.phone})`)
+      }
       
       return {
         contact: contact.name,
-        phone: contact.phone,
-        email: contact.email,
-        status: 'sent',
-        method: ['sms', 'email'],
+        phone: contact.phone || 'N/A',
+        email: contact.email || 'N/A',
+        status: emailResult.success ? 'sent' : 'failed',
+        method: methods,
+        primaryMethod: contact.email ? 'email' : 'sms',
         timestamp: new Date().toISOString(),
-        messageId: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`
+        messageId: emailResult.details.messageId || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+        emailResult: emailResult.success ? 'delivered' : 'failed'
       }
     })
 
@@ -226,6 +287,7 @@ This is an automated emergency alert. Please check on the person immediately.`
         notifications.map(notification => ({
           ...notification,
           panicId: data.panicId,
+          emailDetails: emailResult.details,
           createdAt: new Date()
         }))
       )
@@ -234,17 +296,22 @@ This is an automated emergency alert. Please check on the person immediately.`
     }
 
     return {
-      success: true,
+      success: emailResult.success,
       contactsNotified: emergencyContacts.length,
+      emailsSent: contactEmails.length,
       notifications,
-      message: `Emergency alerts sent to ${emergencyContacts.length} contacts`
+      emailResult: emailResult.details,
+      message: emailResult.success 
+        ? `✅ Emergency emails sent successfully to ${contactEmails.length} contacts` 
+        : `❌ Failed to send emergency emails: ${emailResult.details.error}`
     }
   } catch (error) {
     console.error('Notification error:', error)
     return {
       success: false,
       error: 'Failed to notify emergency contacts',
-      message: 'Notification system encountered an error'
+      message: 'Notification system encountered an error',
+      details: error instanceof Error ? error.message : 'Unknown error'
     }
   }
 }

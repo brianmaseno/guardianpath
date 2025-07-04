@@ -10,10 +10,14 @@ import {
   ArrowRight
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { Header } from '@/components/Header'
+import Header from '@/components/Header'
 import { PanicButton } from '@/components/PanicButton'
 import { FeatureGrid } from '@/components/FeatureGrid'
-import { Location } from '@/types'
+
+interface Location {
+  lat: number
+  lng: number
+}
 
 export default function Home() {
   const [location, setLocation] = useState<Location | null>(null)
