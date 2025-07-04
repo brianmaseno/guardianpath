@@ -109,31 +109,85 @@ export default function Dashboard() {
   }
 
   const fetchNearbyLocations = async (lat: number, lng: number) => {
-    // Mock nearby safety locations for demo
-    const mockLocations = [
-      {
-        name: 'Central Police Station',
-        type: 'police',
-        distance: 0.8,
-        address: '123 Main St, Downtown',
-        phone: '+1-555-0123'
-      },
-      {
-        name: 'City General Hospital',
-        type: 'hospital',
-        distance: 1.2,
-        address: '456 Health Ave, Medical District',
-        phone: '+1-555-0456'
-      },
-      {
-        name: 'Emergency Services Center',
-        type: 'emergency',
-        distance: 2.1,
-        address: '789 Safety Blvd, Government District',
-        phone: '+1-555-0789'
+    try {
+      // Get Azure Maps key from environment
+      const azureMapsKey = process.env.NEXT_PUBLIC_AZURE_MAPS_KEY
+      
+      if (!azureMapsKey) {
+        console.error('Azure Maps key not configured')
+        setNearbyLocations([])
+        return
       }
-    ]
-    setNearbyLocations(mockLocations)
+      
+      // Search for police stations
+      const policeResponse = await fetch(
+        `https://atlas.microsoft.com/search/fuzzy/json?api-version=1.0&subscription-key=${azureMapsKey}&query=police%20station&lat=${lat}&lon=${lng}&radius=10000&limit=5`
+      )
+      
+      // Search for hospitals
+      const hospitalResponse = await fetch(
+        `https://atlas.microsoft.com/search/fuzzy/json?api-version=1.0&subscription-key=${azureMapsKey}&query=hospital&lat=${lat}&lon=${lng}&radius=10000&limit=5`
+      )
+
+      const locations: any[] = []
+
+      if (policeResponse.ok) {
+        const policeData = await policeResponse.json()
+        policeData.results?.forEach((result: any) => {
+          if (result.poi && result.position) {
+            const distance = calculateDistance(lat, lng, result.position.lat, result.position.lon)
+            locations.push({
+              name: result.poi.name,
+              type: 'police',
+              distance: distance,
+              address: result.address?.freeformAddress || 'Address not available',
+              phone: result.poi.phone || 'Phone not available',
+              position: result.position
+            })
+          }
+        })
+      }
+
+      if (hospitalResponse.ok) {
+        const hospitalData = await hospitalResponse.json()
+        hospitalData.results?.forEach((result: any) => {
+          if (result.poi && result.position) {
+            const distance = calculateDistance(lat, lng, result.position.lat, result.position.lon)
+            locations.push({
+              name: result.poi.name,
+              type: 'hospital',
+              distance: distance,
+              address: result.address?.freeformAddress || 'Address not available',
+              phone: result.poi.phone || 'Phone not available',
+              position: result.position
+            })
+          }
+        })
+      }
+
+      // Sort by distance and take closest 6
+      locations.sort((a, b) => a.distance - b.distance)
+      setNearbyLocations(locations.slice(0, 6))
+
+    } catch (error) {
+      console.error('Failed to fetch nearby locations:', error)
+      // Fallback to showing message about location services
+      setNearbyLocations([])
+    }
+  }
+
+  // Helper function to calculate distance between two points
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    const R = 6371 // Radius of the Earth in kilometers
+    const dLat = (lat2 - lat1) * Math.PI / 180
+    const dLon = (lon2 - lon1) * Math.PI / 180
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+      Math.sin(dLon/2) * Math.sin(dLon/2)
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
+    const distance = R * c // Distance in kilometers
+    return Math.round(distance * 10) / 10 // Round to 1 decimal place
   }
 
   const fetchPanicEvents = async () => {

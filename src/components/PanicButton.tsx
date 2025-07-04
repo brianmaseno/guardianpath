@@ -2,8 +2,9 @@
 
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { AlertTriangle, Camera, MapPin, Clock, Users } from 'lucide-react'
+import { AlertTriangle, Camera, MapPin, Clock, Users, Plus } from 'lucide-react'
 import { useSession } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
 import { Location } from '@/types'
 
@@ -17,9 +18,11 @@ interface PanicButtonProps {
 
 export function PanicButton({ onPanicActivated }: PanicButtonProps) {
   const { data: session } = useSession()
+  const router = useRouter()
   const [isActivating, setIsActivating] = useState(false)
   const [isActive, setIsActive] = useState(false)
   const [emergencyContacts, setEmergencyContacts] = useState<any[]>([])
+  const [showContactWarning, setShowContactWarning] = useState(false)
 
   const checkEmergencyContacts = async () => {
     if (!session) {
@@ -35,7 +38,7 @@ export function PanicButton({ onPanicActivated }: PanicButtonProps) {
         setEmergencyContacts(contacts)
         
         if (contacts.length === 0) {
-          toast.error('No emergency contacts found. Please add contacts first.')
+          setShowContactWarning(true)
           return false
         }
         return true
@@ -207,6 +210,46 @@ export function PanicButton({ onPanicActivated }: PanicButtonProps) {
         >
           Deactivate
         </button>
+      </motion.div>
+    )
+  }
+
+  // Show warning if no emergency contacts
+  if (showContactWarning) {
+    return (
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.8 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="text-center space-y-4 p-6 bg-yellow-50 dark:bg-yellow-900/20 rounded-xl border border-yellow-200 dark:border-yellow-800"
+      >
+        <div className="inline-block p-4 bg-yellow-100 dark:bg-yellow-900/40 rounded-full">
+          <Users className="h-8 w-8 text-yellow-600 dark:text-yellow-400" />
+        </div>
+        
+        <div className="space-y-2">
+          <h3 className="text-lg font-bold text-yellow-800 dark:text-yellow-200">
+            Emergency Contacts Required
+          </h3>
+          <p className="text-yellow-700 dark:text-yellow-300 text-sm">
+            You need to add at least one emergency contact before using the panic button.
+          </p>
+        </div>
+        
+        <div className="flex flex-col sm:flex-row gap-3 justify-center">
+          <button
+            onClick={() => router.push('/emergency-contacts')}
+            className="flex items-center justify-center space-x-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+          >
+            <Plus className="h-4 w-4" />
+            <span>Add Emergency Contact</span>
+          </button>
+          <button
+            onClick={() => setShowContactWarning(false)}
+            className="px-6 py-3 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
       </motion.div>
     )
   }

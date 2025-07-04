@@ -32,11 +32,14 @@ export async function POST(request: NextRequest) {
     }
 
     const body: PanicRequestBody = await request.json()
-    const { location, timestamp, photo } = body
+    const { location, photo } = body
+    
+    // Use current server time to ensure accuracy
+    const currentTimestamp = new Date().toISOString()
 
     console.log('Panic mode activated by:', session.user.email, { 
       location: location ? `${location.lat}, ${location.lng}` : 'No location',
-      timestamp,
+      timestamp: currentTimestamp,
       hasPhoto: !!photo
     })
 
@@ -74,7 +77,7 @@ export async function POST(request: NextRequest) {
         userEmail: session.user.email,
         panicId,
         location,
-        timestamp: new Date(timestamp),
+        timestamp: new Date(currentTimestamp),
         photo: photo ? 'stored' : null,
         status: 'active',
         safetyData: null, // Will be updated after safety data is retrieved
@@ -157,7 +160,7 @@ export async function POST(request: NextRequest) {
     const notificationResult = await notifyEmergencyContacts({
       panicId,
       location,
-      timestamp,
+      timestamp: currentTimestamp,
       imageAnalysis: imageAnalysis || undefined,
       safetyData: safetyData || undefined
     }, emergencyContacts, {
@@ -170,7 +173,7 @@ export async function POST(request: NextRequest) {
       success: true,
       panicId,
       location,
-      timestamp,
+      timestamp: currentTimestamp,
       imageAnalysis,
       safetyData,
       notificationResult,

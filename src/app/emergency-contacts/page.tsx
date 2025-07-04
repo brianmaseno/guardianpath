@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Plus, Edit, Trash2, Phone, Mail, User, Shield } from 'lucide-react'
+import { Plus, Edit, Trash2, Phone, Mail, User, Shield, AlertTriangle } from 'lucide-react'
 import { useSession } from 'next-auth/react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import toast from 'react-hot-toast'
 import Header from '@/components/Header'
 
@@ -21,6 +21,8 @@ interface EmergencyContact {
 export default function EmergencyContacts() {
   const { data: session, status } = useSession()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const isRequired = searchParams.get('required') === 'true'
   const [contacts, setContacts] = useState<EmergencyContact[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -143,6 +145,28 @@ export default function EmergencyContacts() {
       <Header />
       
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Required Warning */}
+        {isRequired && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg"
+          >
+            <div className="flex items-start space-x-3">
+              <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5" />
+              <div>
+                <h3 className="text-sm font-medium text-red-800 dark:text-red-200">
+                  Emergency Contacts Required
+                </h3>
+                <p className="text-sm text-red-700 dark:text-red-300 mt-1">
+                  You need to add at least one emergency contact before you can use the panic button. 
+                  This ensures someone will be notified in case of an emergency.
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
             Emergency Contacts
