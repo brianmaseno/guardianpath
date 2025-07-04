@@ -12,6 +12,14 @@ interface PanicRequestBody {
   photo?: string
 }
 
+interface EmergencyContact {
+  name: string
+  email: string
+  phone: string
+  relationship: string
+  isActive?: boolean
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Check authentication
@@ -214,7 +222,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function notifyEmergencyContacts(data: Record<string, unknown>, contacts: any[], userInfo: { email: string; name: string }) {
+async function notifyEmergencyContacts(data: Record<string, unknown>, contacts: EmergencyContact[], userInfo: { email: string; name: string }) {
   try {
     // Use the user's actual emergency contacts
     const emergencyContacts = contacts.filter(contact => contact.isActive !== false)

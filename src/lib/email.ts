@@ -34,6 +34,17 @@ interface EmergencyEmailData {
   googleMapsUrl?: string
 }
 
+interface EmailResult {
+  success: boolean
+  details: {
+    messageId?: string
+    error?: string
+    contactsEmailed?: string[]
+    timestamp?: string
+    recipientCount?: number
+  }
+}
+
 class EmailService {
   private transporter: nodemailer.Transporter
 
@@ -49,7 +60,7 @@ class EmailService {
         
         // Create a mock transporter for development
         this.transporter = {
-          sendMail: async (options: any) => {
+          sendMail: async (options: EmailOptions) => {
             console.log('📧 [SIMULATED EMAIL]')
             console.log('To:', options.to)
             console.log('Subject:', options.subject)
@@ -57,7 +68,7 @@ class EmailService {
             return { messageId: `mock_${Date.now()}` }
           },
           verify: async () => true
-        } as any
+        } as nodemailer.Transporter
         return
       }
 
@@ -349,7 +360,7 @@ Generated at: ${new Date().toLocaleString()}
     `
   }
 
-  async sendEmergencyAlert(emergencyData: EmergencyEmailData, contactEmails: string[]): Promise<{ success: boolean; details: any }> {
+  async sendEmergencyAlert(emergencyData: EmergencyEmailData, contactEmails: string[]): Promise<EmailResult> {
     const subject = `🚨 EMERGENCY ALERT: ${emergencyData.userName} needs help - ${new Date().toLocaleTimeString()}`
     const html = this.generateEmergencyEmailHTML(emergencyData)
     const text = this.generateEmergencyEmailText(emergencyData)
